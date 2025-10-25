@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bird - Three.js</title>
+    <style>
+        /* Reset základních stylů pro konzistenci mezi prohlížeči */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+
+        /* Kontejner pro canvas Three.js */
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* HUD overlay pro skóre */
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            z-index: 10;
+        }
+
+        /* Game Over overlay */
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            padding: 40px;
+            border-radius: 10px;
+            display: none;
+            z-index: 20;
+        }
+
+        #gameOver h1 {
+            margin: 0 0 20px 0;
+            font-size: 64px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        #gameOver p {
+            margin: 10px 0;
+            font-size: 24px;
+        }
+
+        /* Instrukce při spuštění hry */
+        #instructions {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            font-size: 32px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            z-index: 15;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- HUD pro zobrazení skóre -->
+    <div id="hud">Skóre: 0</div>
+    
+    <!-- Instrukce při začátku hry -->
+    <div id="instructions">Stiskni MEZERNÍK pro start!</div>
+    
+    <!-- Game Over screen -->
+    <div id="gameOver">
+        <h1>GAME OVER</h1>
+        <p id="finalScore">Finální skóre: 0</p>
+        <p>Stiskni MEZERNÍK pro restart</p>
+    </div>
+
+    <!-- Načtení Three.js z CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    
+    <script>
+        // ==============================================
+        // KONSTANTY A NASTAVENÍ HRY
+        // ==============================================
+        
+        const GRAVITY = -0.0008;           // Gravitační konstanta působící na ptáka
+        const JUMP_VELOCITY = 0.02;        // Rychlost skoku při stisknutí mezerníku
+        const BIRD_SIZE = 0.5;             // Velikost ptáka (poloměr koule)
+        const PIPE_WIDTH = 1;              // Šířka trubky (překážky)
+        const PIPE_GAP = 3;                // Velikost mezery mezi horní a dolní trubkou
+        const PIPE_SPEED = 0.03;           // Rychlost pohybu trubek doleva
+        const PIPE_SPAWN_INTERVAL = 2000;  // Interval spawnu nových trubek (v ms)
+        const WORLD_WIDTH = 20;            // Šířka herního světa
+        const WORLD_HEIGHT = 15;           // Výška herního světa
+        const GROUND_HEIGHT = 0.5;         // Výška země
+
+        // ==============================================
+        // HERNÍ PROMĚNNÉ
+        // ==============================================
+        
+        let scene, camera, renderer;       // Základní Three.js objekty
+        let bird;                          // Objekt představující ptáka
+        let birdVelocity = 0;              // Vertikální rychlost ptáka
+        let pipes = [];                    // Pole všech aktivních trubek
+        let score = 0;                     // Aktuální skóre
+        let gameStarted = false;           // Příznak, zda hra začala
+        let gameOver = false;              // Příznak, zda hra skončila
+        let lastPipeTime = 0;              // Čas posledního spawnu trubky
+        let ground, ceiling;               // Objekty země a stropu
+
+        // ==============================================
+        // INICIALIZACE SCÉNY
+        // ==============================================
+        
+        function init() {
+            // Vytvoření scény - kontejner pro všechny 3D objekty
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Světle modrá barva (obloha)
+
+            // Nastavení ortografické kamery pro 2D pohled
+            // Ortografická kamera nemá perspektivu, objekty stejné velikosti
+            // vypadají stejně velké nezávisle na vzdálenosti
+            const aspect = window.innerWidth / window.innerHeight;
+            const frustumSize = WORLD_HEIGHT;
+            camera = new THREE.OrthographicCamera(
+                frustumSize * aspect / -2,  // left
+                frustumSize * aspect / 2,   // right
+                frustumSize / 2,            // top
+                frustumSize / -2,           // bottom
+                0.1,                        // near
+                1000                        // far
+            );
+            camera.position.z = 10;  // Posuneme kameru zpět, aby viděla scénu
+
+            // Vytvoření rendereru - vykresluje scénu
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Vytvoření světel pro lepší vizuální vzhled
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+
+            // Vytvoření ptáka
+            createBird();
+
+            // Vytvoření země a stropu
+            createGroundAndCeiling();
+
+            // Obsluha změny velikosti okna
+            window.addEventListener('resize', onWindowResize);
+            
+            // Obsluha stisku klávesy (mezerník)
+            document.addEventListener('keydown', onKeyPress);
+        }
+
+        // ==============================================
+        // VYTVOŘENÍ PTÁKA
+        // ==============================================
+        
+        function createBird() {
+            // Vytvoření geometrie koule pro ptáka
+            const geometry = new THREE.SphereGeometry(BIRD_SIZE, 32, 32);
+            
+            // Vytvoření materiálu se žlutou barvou
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0xFFFF00,  // Žlutá barva
+                shininess: 100 
+            });
+            
+            // Kombinace geometrie a materiálu vytvoří mesh (3D objekt)
+            bird = new THREE.Mesh(geometry, material);
+            
+            // Počáteční pozice ptáka (vlevo od středu)
+            bird.position.set(-5, 0, 0);
+            
+            // Přidání ptáka do scény
+            scene.add(bird);
+        }
+
+        // ==============================================
+        // VYTVOŘENÍ ZEMĚ A STROPU
+        // ==============================================
+        
+        function createGroundAndCeiling() {
+            // Země - zelená deska na spodní straně
+            const groundGeometry = new THREE.BoxGeometry(WORLD_WIDTH * 2, GROUND_HEIGHT, 1);
+            const groundMaterial = new THREE.MeshPhongMaterial({ color: 0x00AA00 });
+            ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.position.set(0, -WORLD_HEIGHT / 2 + GROUND_HEIGHT / 2, 0);
+            scene.add(ground);
+
+            // Strop - tmavě modrá deska na horní straně
+            const ceilingGeometry = new THREE.BoxGeometry(WORLD_WIDTH * 2, GROUND_HEIGHT, 1);
+            const ceilingMaterial = new THREE.MeshPhongMaterial({ color: 0x0066CC });
+            ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
+            ceiling.position.set(0, WORLD_HEIGHT / 2 - GROUND_HEIGHT / 2, 0);
+            scene.add(ceiling);
+        }
+
+        // ==============================================
+        // VYTVOŘENÍ PŘEKÁŽKY (TRUBKY)
+        // ==============================================
+        
+        function createPipe() {
+            // Náhodná výška mezery - střed mezery je někde mezi -3 a 3
+            const gapCenterY = Math.random() * 6 - 3;
+            
+            // Výška horní a dolní trubky
+            const topPipeHeight = WORLD_HEIGHT / 2 - GROUND_HEIGHT - gapCenterY - PIPE_GAP / 2;
+            const bottomPipeHeight = WORLD_HEIGHT / 2 - GROUND_HEIGHT + gapCenterY - PIPE_GAP / 2;
+
+            // Vytvoření horní trubky (zelená)
+            const topGeometry = new THREE.BoxGeometry(PIPE_WIDTH, topPipeHeight, 1);
+            const topMaterial = new THREE.MeshPhongMaterial({ color: 0x00FF00 });
+            const topPipe = new THREE.Mesh(topGeometry, topMaterial);
+            
+            // Umístění horní trubky
+            topPipe.position.set(
+                WORLD_WIDTH / 2 + PIPE_WIDTH,  // Spawn napravo od obrazovky
+                WORLD_HEIGHT / 2 - GROUND_HEIGHT - topPipeHeight / 2,
+                0
+            );
+
+            // Vytvoření dolní trubky (zelená)
+            const bottomGeometry = new THREE.BoxGeometry(PIPE_WIDTH, bottomPipeHeight, 1);
+            const bottomMaterial = new THREE.MeshPhongMaterial({ color: 0x00FF00 });
+            const bottomPipe = new THREE.Mesh(bottomGeometry, bottomMaterial);
+            
+            // Umístění dolní trubky
+            bottomPipe.position.set(
+                WORLD_WIDTH / 2 + PIPE_WIDTH,  // Spawn napravo od obrazovky
+                -WORLD_HEIGHT / 2 + GROUND_HEIGHT + bottomPipeHeight / 2,
+                0
+            );
+
+            // Přidání obou trubek do scény
+            scene.add(topPipe);
+            scene.add(bottomPipe);
+
+            // Uložení informace o trubce do pole
+            // scored = false znamená, že ještě nebyl započítán bod za proletění
+            pipes.push({
+                top: topPipe,
+                bottom: bottomPipe,
+                scored: false
+            });
+        }
+
+        // ==============================================
+        // AKTUALIZACE PTÁKA
+        // ==============================================
+        
+        function updateBird() {
+            if (!gameStarted || gameOver) return;
+
+            // Aplikace gravitace na rychlost ptáka
+            birdVelocity += GRAVITY;
+
+            // Aktualizace pozice ptáka podle rychlosti
+            bird.position.y += birdVelocity;
+
+            // Rotace ptáka podle rychlosti (vizuální efekt)
+            // Když pták stoupá, naklání se nahoru, když padá, naklání se dolů
+            bird.rotation.z = birdVelocity * 3;
+        }
+
+        // ==============================================
+        // AKTUALIZACE TRUBEK
+        // ==============================================
+        
+        function updatePipes() {
+            if (!gameStarted || gameOver) return;
+
+            // Procházení všech trubek
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                const pipe = pipes[i];
+
+                // Posun trubek doleva
+                pipe.top.position.x -= PIPE_SPEED;
+                pipe.bottom.position.x -= PIPE_SPEED;
+
+                // Kontrola, zda pták prošel mezerou (pro skóre)
+                if (!pipe.scored && bird.position.x > pipe.top.position.x + PIPE_WIDTH / 2) {
+                    score++;
+                    pipe.scored = true;
+                    updateScore();
+                }
+
+                // Odstranění trubek, které zmizely z obrazovky (vlevo)
+                if (pipe.top.position.x < -WORLD_WIDTH / 2 - PIPE_WIDTH * 2) {
+                    scene.remove(pipe.top);
+                    scene.remove(pipe.bottom);
+                    pipes.splice(i, 1);
+                }
+            }
+        }
+
+        // ==============================================
+        // DETEKCE KOLIZÍ
+        // ==============================================
+        
+        function checkCollisions() {
+            if (!gameStarted || gameOver) return;
+
+            // Hranice ptáka
+            const birdTop = bird.position.y + BIRD_SIZE;
+            const birdBottom = bird.position.y - BIRD_SIZE;
+            const birdLeft = bird.position.x - BIRD_SIZE;
+            const birdRight = bird.position.x + BIRD_SIZE;
+
+            // Kolize se zemí
+            if (birdBottom <= -WORLD_HEIGHT / 2 + GROUND_HEIGHT) {
+                endGame();
+                return;
+            }
+
+            // Kolize se stropem
+            if (birdTop >= WORLD_HEIGHT / 2 - GROUND_HEIGHT) {
+                endGame();
+                return;
+            }
+
+            // Kontrola kolize s trubkami
+            for (let pipe of pipes) {
+                const pipeLeft = pipe.top.position.x - PIPE_WIDTH / 2;
+                const pipeRight = pipe.top.position.x + PIPE_WIDTH / 2;
+
+                // Kontrola, zda pták je horizontálně v oblasti trubky
+                if (birdRight > pipeLeft && birdLeft < pipeRight) {
+                    // Získání hranic mezery
+                    const topPipeBottom = pipe.top.position.y - pipe.top.geometry.parameters.height / 2;
+                    const bottomPipeTop = pipe.bottom.position.y + pipe.bottom.geometry.parameters.height / 2;
+
+                    // Kontrola, zda pták narazil do horní nebo dolní trubky
+                    if (birdTop > topPipeBottom || birdBottom < bottomPipeTop) {
+                        endGame();
+                        return;
+                    }
+                }
+            }
+        }
+
+        // ==============================================
+        // SPAWN NOVÝCH TRUBEK
+        // ==============================================
+        
+        function spawnPipes(currentTime) {
+            if (!gameStarted || gameOver) return;
+
+            // Kontrola, zda uplynul dostatečný čas od posledního spawnu
+            if (currentTime - lastPipeTime > PIPE_SPAWN_INTERVAL) {
+                createPipe();
+                lastPipeTime = currentTime;
+            }
+        }
+
+        // ==============================================
+        // OBSLUHA STISKU KLÁVESY
+        // ==============================================
+        
+        function onKeyPress(event) {
+            // Kontrola, zda byla stisknuta mezerník (kód 32)
+            if (event.code === 'Space' || event.keyCode === 32) {
+                event.preventDefault();  // Zabránění scrollování stránky
+
+                if (!gameStarted) {
+                    // Start hry při prvním stisku mezerníku
+                    startGame();
+                } else if (gameOver) {
+                    // Restart hry po game over
+                    restartGame();
+                } else {
+                    // Skok ptáka během hry
+                    jump();
+                }
+            }
+        }
+
+        // ==============================================
+        // SKOK PTÁKA
+        // ==============================================
+        
+        function jump() {
+            // Nastavení vertikální rychlosti nahoru
+            birdVelocity = JUMP_VELOCITY;
+        }
+
+        // ==============================================
+        // START HRY
+        // ==============================================
+        
+        function startGame() {
+            gameStarted = true;
+            lastPipeTime = Date.now();
+            document.getElementById('instructions').style.display = 'none';
+            
+            // První skok při startu
+            jump();
+        }
+
+        // ==============================================
+        // UKONČENÍ HRY
+        // ==============================================
+        
+        function endGame() {
+            gameOver = true;
+            
+            // Zobrazení Game Over obrazovky
+            document.getElementById('finalScore').textContent = `Finální skóre: ${score}`;
+            document.getElementById('gameOver').style.display = 'block';
+        }
+
+        // ==============================================
+        // RESTART HRY
+        // ==============================================
+        
+        function restartGame() {
+            // Reset všech herních proměnných
+            gameOver = false;
+            gameStarted = false;
+            score = 0;
+            birdVelocity = 0;
+
+            // Reset pozice ptáka
+            bird.position.set(-5, 0, 0);
+            bird.rotation.z = 0;
+
+            // Odstranění všech trubek
+            for (let pipe of pipes) {
+                scene.remove(pipe.top);
+                scene.remove(pipe.bottom);
+            }
+            pipes = [];
+
+            // Aktualizace UI
+            updateScore();
+            document.getElementById('gameOver').style.display = 'none';
+            document.getElementById('instructions').style.display = 'block';
+        }
+
+        // ==============================================
+        // AKTUALIZACE SKÓRE V HUD
+        // ==============================================
+        
+        function updateScore() {
+            document.getElementById('hud').textContent = `Skóre: ${score}`;
+        }
+
+        // ==============================================
+        // OBSLUHA ZMĚNY VELIKOSTI OKNA
+        // ==============================================
+        
+        function onWindowResize() {
+            // Přepočítání aspect ratio
+            const aspect = window.innerWidth / window.innerHeight;
+            
+            // Aktualizace kamery
+            camera.left = -WORLD_HEIGHT * aspect / 2;
+            camera.right = WORLD_HEIGHT * aspect / 2;
+            camera.top = WORLD_HEIGHT / 2;
+            camera.bottom = -WORLD_HEIGHT / 2;
+            camera.updateProjectionMatrix();
+
+            // Aktualizace velikosti rendereru
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // ==============================================
+        // HLAVNÍ HERNÍ SMYČKA
+        // ==============================================
+        
+        function animate() {
+            // requestAnimationFrame zajišťuje plynulé vykreslování (~60 FPS)
+            requestAnimationFrame(animate);
+
+            // Aktualizace herních objektů
+            updateBird();
+            updatePipes();
+            checkCollisions();
+            spawnPipes(Date.now());
+
+            // Vykreslení scény
+            renderer.render(scene, camera);
+        }
+
+        // ==============================================
+        // SPUŠTĚNÍ HRY
+        // ==============================================
+        
+        // Inicializace při načtení stránky
+        init();
+        
+        // Spuštění herní smyčky
+        animate();
+    </script>
+</body>
+</html>
