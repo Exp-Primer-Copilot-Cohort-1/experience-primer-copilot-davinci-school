@@ -1,0 +1,26 @@
+{
+  "name": "davinci-school-threejs-game",
+  "version": "1.0.0",
+  "description": "A three.js game development repository for experimenting with AI-assisted coding using GitHub Copilot",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "threejs",
+    "game",
+    "webgl",
+    "copilot",
+    "ai-assisted"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.158.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
