@@ -11,6 +11,8 @@
             padding: 0;
             overflow: hidden;
             font-family: Arial, sans-serif;
+            /* Halloween fialové pozadí (gradient) */
+            background: linear-gradient(135deg, #2b0036 0%, #6a00a4 50%, #a14fe0 100%);
         }
 
         /* Kontejner pro canvas Three.js */
@@ -98,6 +100,7 @@
         
         const GRAVITY = -0.0008;           // Gravitační konstanta působící na ptáka
         const JUMP_VELOCITY = 0.02;        // Rychlost skoku při stisknutí mezerníku
+        const THRUST = 0.0012;             // Kontinuální tah při držení mezerníku
         const BIRD_SIZE = 0.5;             // Velikost ptáka (poloměr koule)
         const PIPE_WIDTH = 1;              // Šířka trubky (překážky)
         const PIPE_GAP = 3;                // Velikost mezery mezi horní a dolní trubkou
@@ -120,6 +123,7 @@
         let gameOver = false;              // Příznak, zda hra skončila
         let lastPipeTime = 0;              // Čas posledního spawnu trubky
         let ground, ceiling;               // Objekty země a stropu
+        let spacePressed = false;          // Příznak držení mezerníku
 
         // ==============================================
         // INICIALIZACE SCÉNY
@@ -128,7 +132,7 @@
         function init() {
             // Vytvoření scény - kontejner pro všechny 3D objekty
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB); // Světle modrá barva (obloha)
+            // Použijeme průhledné pozadí rendereru, pozadí nastavíme přes CSS (fialový gradient)
 
             // Nastavení ortografické kamery pro 2D pohled
             // Ortografická kamera nemá perspektivu, objekty stejné velikosti
@@ -146,7 +150,8 @@
             camera.position.z = 10;  // Posuneme kameru zpět, aby viděla scénu
 
             // Vytvoření rendereru - vykresluje scénu
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            // Povolit alpha, aby bylo vidět CSS background za canvasem
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
@@ -167,8 +172,9 @@
             // Obsluha změny velikosti okna
             window.addEventListener('resize', onWindowResize);
             
-            // Obsluha stisku klávesy (mezerník)
-            document.addEventListener('keydown', onKeyPress);
+            // Obsluha stisku a držení mezerníku
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
         }
 
         // ==============================================
@@ -176,23 +182,69 @@
         // ==============================================
         
         function createBird() {
-            // Vytvoření geometrie koule pro ptáka
+            // Orange sphere jako tělo dýně
             const geometry = new THREE.SphereGeometry(BIRD_SIZE, 32, 32);
-            
-            // Vytvoření materiálu se žlutou barvou
             const material = new THREE.MeshPhongMaterial({ 
-                color: 0xFFFF00,  // Žlutá barva
-                shininess: 100 
+                color: 0xFF8C00,  // Oranžová (pumpkin)
+                shininess: 40 
             });
-            
-            // Kombinace geometrie a materiálu vytvoří mesh (3D objekt)
             bird = new THREE.Mesh(geometry, material);
-            
-            // Počáteční pozice ptáka (vlevo od středu)
             bird.position.set(-5, 0, 0);
-            
-            // Přidání ptáka do scény
+
+            // Přidáme jednoduchou "tvář" dýně jako plane s texture z canvasu
+            const faceTexture = createPumpkinFaceTexture();
+            const faceMaterial = new THREE.MeshBasicMaterial({ map: faceTexture, transparent: true });
+            const facePlane = new THREE.Mesh(new THREE.PlaneGeometry(BIRD_SIZE * 1.6, BIRD_SIZE * 1.6), faceMaterial);
+            // Umístíme placku těsně před kouli, aby vypadala jako vyřezaná tvář
+            facePlane.position.set(0, 0, BIRD_SIZE + 0.01);
+            // Přidáme facePlane jako child do bird, takže se pohybuje s ním
+            bird.add(facePlane);
+
             scene.add(bird);
+        }
+
+        // Vytvoří canvas texture s jednoduchou "pumpkin" tváří (oči, ústa)
+        function createPumpkinFaceTexture() {
+            const size = 256;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Transparentní pozadí
+            ctx.clearRect(0, 0, size, size);
+
+            // Oči (trojúhelníky)
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.moveTo(size * 0.33, size * 0.35);
+            ctx.lineTo(size * 0.28, size * 0.45);
+            ctx.lineTo(size * 0.38, size * 0.45);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(size * 0.67, size * 0.35);
+            ctx.lineTo(size * 0.62, size * 0.45);
+            ctx.lineTo(size * 0.72, size * 0.45);
+            ctx.closePath();
+            ctx.fill();
+
+            // Ústa (zubaté)
+            ctx.beginPath();
+            ctx.moveTo(size * 0.28, size * 0.62);
+            ctx.lineTo(size * 0.72, size * 0.62);
+            ctx.lineTo(size * 0.66, size * 0.72);
+            ctx.lineTo(size * 0.60, size * 0.62);
+            ctx.lineTo(size * 0.52, size * 0.72);
+            ctx.lineTo(size * 0.44, size * 0.62);
+            ctx.lineTo(size * 0.34, size * 0.72);
+            ctx.closePath();
+            ctx.fill();
+
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+            return texture;
         }
 
         // ==============================================
@@ -273,6 +325,11 @@
 
             // Aplikace gravitace na rychlost ptáka
             birdVelocity += GRAVITY;
+
+            // Pokud hráč drží mezerník, aplikujeme kontinuální tah/upwards thrust
+            if (spacePressed) {
+                birdVelocity += THRUST;
+            }
 
             // Aktualizace pozice ptáka podle rychlosti
             bird.position.y += birdVelocity;
@@ -376,21 +433,33 @@
         // OBSLUHA STISKU KLÁVESY
         // ==============================================
         
-        function onKeyPress(event) {
-            // Kontrola, zda byla stisknuta mezerník (kód 32)
+        // Nová obsluha pro keydown: první stisk spustí start/restart/skok, držení nastaví spacePressed
+        function onKeyDown(event) {
             if (event.code === 'Space' || event.keyCode === 32) {
-                event.preventDefault();  // Zabránění scrollování stránky
+                event.preventDefault();
 
-                if (!gameStarted) {
-                    // Start hry při prvním stisku mezerníku
-                    startGame();
-                } else if (gameOver) {
-                    // Restart hry po game over
-                    restartGame();
-                } else {
-                    // Skok ptáka během hry
-                    jump();
+                // Pokud to je první detekce keydown (ne auto-repeat), proveď akci
+                if (!spacePressed) {
+                    if (!gameStarted) {
+                        startGame();
+                    } else if (gameOver) {
+                        restartGame();
+                    } else {
+                        // Původní skok na stisknutí
+                        jump();
+                    }
                 }
+
+                // Označíme, že mezerník je podržen
+                spacePressed = true;
+            }
+        }
+
+        // Když uživatel pustí mezerník, zastavíme kontinuální tah
+        function onKeyUp(event) {
+            if (event.code === 'Space' || event.keyCode === 32) {
+                event.preventDefault();
+                spacePressed = false;
             }
         }
 
