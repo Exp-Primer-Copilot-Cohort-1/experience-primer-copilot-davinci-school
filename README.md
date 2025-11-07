@@ -56,39 +56,76 @@ Before you open up a codespace on a repository, you can create a development con
        "name": "Codespace for Skills!",
        "customizations": {
            "vscode": {
-               "extensions": [
-                   "GitHub.copilot"
-               ]
-           }
-       }
-   }
-   ```
-1. Select the option to **Commit directly to the `main` branch**, and then click the **Commit new file** button.
-1. Navigate back to the home page of your repository by clicking the **Code** tab located at the top left of the screen.
-1. Click the **Code** button located in the middle of the page.
-1. Click the **Codespaces** tab on the box that pops up.
-1. Click the **Create codespace on main** button.
+               # Flappy Pumpkin (Three.js)
 
-   **Wait about 2 minutes for the codespace to spin itself up.**
+               Jednoduchá webová hra inspirovaná Flappy Bird, napsaná v jednom souboru `index.html` s použitím Three.js.
 
-1. Verify your codespace is running. The browser should contain a VS Code web-based editor and a terminal should be present such as the below:
-   ![Screen Shot 2023-03-09 at 9 09 07 AM](https://user-images.githubusercontent.com/26442605/224102962-d0222578-3f10-4566-856d-8d59f28fcf2e.png)
-1. The `copilot` extension should show up in the VS Code extension list. Click the extensions sidebar tab. You should see the following:
-   ![Screen Shot 2023-03-09 at 9 04 13 AM](https://user-images.githubusercontent.com/26442605/224102514-7d6d2f51-f435-401d-a529-7bae3ae3e511.png)
+               Hráč ovládá malou "dýni" (kouli s vyřezanou tváří) a prolétává mezi překážkami. Překážky byly upraveny na tvar "kosti" — středový válec s kulatými konci.
 
-**Wait about 60 seconds then refresh your repository landing page for the next step.**
+               ## Funkce
 
-<footer>
+               - 2D/3D hybridní vzhled pomocí Three.js (ortografická kamera)
+               - Překážky ve tvaru kostí (cylinder + sphere caps)
+               - HUD zobrazuje aktuální skóre a nejlepší (lokální) rekord
+               - Nejlepší skóre se ukládá do `localStorage` s fallbackem do cookie
+               - Ovládání klávesou MEZERNÍK (stisk = skok, držení = tah)
 
-<!--
-  <<< Author notes: Footer >>>
-  Add a link to get support, GitHub status page, code of conduct, license link.
--->
+               ## Ovládání
 
----
+               - Stiskni MEZERNÍK (Space) pro start a skok
+               - Držení MEZERNÍKU přidá kontinuální tah nahoru
+               - Po smrti stiskni MEZERNÍK pro restart hry
 
-Get help: [Post in our discussion board](https://github.com/orgs/community/discussions/categories/github-education) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
+               ## Jak spustit lokálně
 
-&copy; 2023 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
+               1. Otevři terminál ve složce projektu (kde je `index.html`).
+               2. Spusť jednoduchý HTTP server (nutné pro korektní načítání některých zdrojů):
 
-</footer>
+               ```bash
+               python3 -m http.server 8000 --bind 0.0.0.0
+               ```
+
+               3. Otevři v prohlížeči URL:
+
+               ```bash
+               http://localhost:8000/index.html
+               ```
+
+               Tip: v devcontaineru nebo Codespaces použij proměnnou `$BROWSER` pokud je k dispozici:
+
+               ```bash
+               "$BROWSER" http://localhost:8000/index.html
+               ```
+
+               Po spuštění stiskni MEZERNÍK pro start a hraj.
+
+               ## Ukládání skóre
+
+               Hra ukládá nejlepší lokální skóre při dokončení hry. Implementace:
+
+               - Primárně se používá `localStorage` (klíč `flappy_best`).
+               - Pokud `localStorage` není dostupné (např. v některých soukromých módech), hra se pokusí načíst a uložit hodnotu také do cookie (`flappy_best`) jako fallback.
+
+               Ukládání probíhá automaticky při konci hry, pokud hráč dosáhl lepšího skóre.
+
+               ## Kde upravovat kód
+
+               - Hlavní logika a UI jsou v `index.html`.
+                 - Funkce pro překážky: `createBone(height)`
+                 - Spawn trubek/překážek: `createPipe()`
+                 - Detekce kolizí: `checkCollisions()`
+                 - Ukládání rekordů: `loadBestScore()` / `saveBestScore()`
+
+               ## Další nápady / vylepšení
+
+               - Přidat tlačítko pro resetování rekordu
+               - Přidat zvuky a vizuální efekty při kolizi nebo dosažení rekordu
+               - Přidat backend (API nebo Firebase) pro sdílené žebříčky mezi zařízeními
+
+               ## Licence
+
+               Projekt používá licencí v kořenovém adresáři (viz `LICENSE`).
+
+               ---
+
+               Pokud chceš, můžu přidat tlačítko pro reset rekordu přímo do `index.html` (UI + funkce pro vymazání `localStorage` a cookie). 
