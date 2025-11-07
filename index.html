@@ -268,6 +268,42 @@
         }
 
         // ==============================================
+        // VYTVOŘENÍ "KOSTI" (BONE) PRO PŘEKÁŽKY
+        // ----------------------------------------------
+        // Kost bude složena ze středového válce a dvou koulí na koncích,
+        // tento tvar bude použit místo dřívějších boxů (trubek).
+        function createBone(height) {
+            const group = new THREE.Group();
+
+            const radius = PIPE_WIDTH / 2;
+
+            // Shaft (válec)
+            const shaftGeometry = new THREE.CylinderGeometry(radius * 0.7, radius * 0.7, Math.max(0.1, height - radius * 2), 16);
+            const boneMaterial = new THREE.MeshPhongMaterial({ color: 0xF5E9D3 }); // světlá "kost"
+            const shaft = new THREE.Mesh(shaftGeometry, boneMaterial);
+            // Cylinder je orientován podél osy Y — necháme ho uprostřed
+            shaft.position.set(0, 0, 0);
+            group.add(shaft);
+
+            // Caps (konce jako koule)
+            const capRadius = radius * 1.15;
+            const capGeometry = new THREE.SphereGeometry(capRadius, 16, 16);
+            const capTop = new THREE.Mesh(capGeometry, boneMaterial);
+            const capBottom = new THREE.Mesh(capGeometry, boneMaterial);
+            // Umístíme koule na konce válce
+            const halfShaft = (Math.max(0.1, height - radius * 2)) / 2;
+            capTop.position.set(0, halfShaft, 0);
+            capBottom.position.set(0, -halfShaft, 0);
+            group.add(capTop);
+            group.add(capBottom);
+
+            // Uložíme výšku do userData pro kolizní logiku
+            group.userData = { height: height };
+
+            return group;
+        }
+
+        // ==============================================
         // VYTVOŘENÍ PŘEKÁŽKY (TRUBKY)
         // ==============================================
         
@@ -279,36 +315,27 @@
             const topPipeHeight = WORLD_HEIGHT / 2 - GROUND_HEIGHT - gapCenterY - PIPE_GAP / 2;
             const bottomPipeHeight = WORLD_HEIGHT / 2 - GROUND_HEIGHT + gapCenterY - PIPE_GAP / 2;
 
-            // Vytvoření horní trubky (zelená)
-            const topGeometry = new THREE.BoxGeometry(PIPE_WIDTH, topPipeHeight, 1);
-            const topMaterial = new THREE.MeshPhongMaterial({ color: 0x00FF00 });
-            const topPipe = new THREE.Mesh(topGeometry, topMaterial);
-            
-            // Umístění horní trubky
+            // Vytvoření horní a dolní překážky jako "kosti"
+            const topPipe = createBone(topPipeHeight);
+            const bottomPipe = createBone(bottomPipeHeight);
+
+            // Umístění horní a dolní překážky (střed skupiny je uprostřed)
             topPipe.position.set(
                 WORLD_WIDTH / 2 + PIPE_WIDTH,  // Spawn napravo od obrazovky
                 WORLD_HEIGHT / 2 - GROUND_HEIGHT - topPipeHeight / 2,
                 0
             );
 
-            // Vytvoření dolní trubky (zelená)
-            const bottomGeometry = new THREE.BoxGeometry(PIPE_WIDTH, bottomPipeHeight, 1);
-            const bottomMaterial = new THREE.MeshPhongMaterial({ color: 0x00FF00 });
-            const bottomPipe = new THREE.Mesh(bottomGeometry, bottomMaterial);
-            
-            // Umístění dolní trubky
             bottomPipe.position.set(
                 WORLD_WIDTH / 2 + PIPE_WIDTH,  // Spawn napravo od obrazovky
                 -WORLD_HEIGHT / 2 + GROUND_HEIGHT + bottomPipeHeight / 2,
                 0
             );
 
-            // Přidání obou trubek do scény
             scene.add(topPipe);
             scene.add(bottomPipe);
 
             // Uložení informace o trubce do pole
-            // scored = false znamená, že ještě nebyl započítán bod za proletění
             pipes.push({
                 top: topPipe,
                 bottom: bottomPipe,
@@ -403,8 +430,12 @@
                 // Kontrola, zda pták je horizontálně v oblasti trubky
                 if (birdRight > pipeLeft && birdLeft < pipeRight) {
                     // Získání hranic mezery
-                    const topPipeBottom = pipe.top.position.y - pipe.top.geometry.parameters.height / 2;
-                    const bottomPipeTop = pipe.bottom.position.y + pipe.bottom.geometry.parameters.height / 2;
+                    // Pokud používáme bone group, výška je uložena v userData.height
+                    const topHeight = pipe.top.userData && pipe.top.userData.height ? pipe.top.userData.height : (pipe.top.geometry && pipe.top.geometry.parameters ? pipe.top.geometry.parameters.height : 0);
+                    const bottomHeight = pipe.bottom.userData && pipe.bottom.userData.height ? pipe.bottom.userData.height : (pipe.bottom.geometry && pipe.bottom.geometry.parameters ? pipe.bottom.geometry.parameters.height : 0);
+
+                    const topPipeBottom = pipe.top.position.y - topHeight / 2;
+                    const bottomPipeTop = pipe.bottom.position.y + bottomHeight / 2;
 
                     // Kontrola, zda pták narazil do horní nebo dolní trubky
                     if (birdTop > topPipeBottom || birdBottom < bottomPipeTop) {
