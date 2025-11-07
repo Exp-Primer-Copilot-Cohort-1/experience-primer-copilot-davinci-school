@@ -119,6 +119,7 @@
         let birdVelocity = 0;              // Vertikální rychlost ptáka
         let pipes = [];                    // Pole všech aktivních trubek
         let score = 0;                     // Aktuální skóre
+    let bestScore = 0;                 // Nejlepší (uložený) skóre
         let gameStarted = false;           // Příznak, zda hra začala
         let gameOver = false;              // Příznak, zda hra skončila
         let lastPipeTime = 0;              // Čas posledního spawnu trubky
@@ -168,6 +169,10 @@
 
             // Vytvoření země a stropu
             createGroundAndCeiling();
+
+            // Načteme nejlepší skóre a aktualizujeme HUD
+            loadBestScore();
+            updateScore();
 
             // Obsluha změny velikosti okna
             window.addEventListener('resize', onWindowResize);
@@ -301,6 +306,64 @@
             group.userData = { height: height };
 
             return group;
+        }
+
+        // ==============================================
+        // ULOŽENÍ / NAČTENÍ NEJLEPŠÍHO SKÓRE
+        // Používáme localStorage s fallbackem do cookies
+        // ==============================================
+        function setCookie(name, value, days) {
+            let expires = '';
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = '; expires=' + date.toUTCString();
+            }
+            document.cookie = name + '=' + encodeURIComponent(value) + expires + '; path=/';
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + '=';
+            const ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return decodeURIComponent(c.substring(nameEQ.length, c.length));
+            }
+            return null;
+        }
+
+        function loadBestScore() {
+            try {
+                const stored = localStorage.getItem('flappy_best');
+                if (stored !== null) {
+                    bestScore = parseInt(stored, 10) || 0;
+                    return;
+                }
+            } catch (e) {
+                // localStorage může být nedostupné - pokračujeme na cookies
+            }
+
+            // fallback do cookie
+            const cookieVal = getCookie('flappy_best');
+            if (cookieVal !== null) {
+                bestScore = parseInt(cookieVal, 10) || 0;
+            } else {
+                bestScore = 0;
+            }
+        }
+
+        function saveBestScore(value) {
+            bestScore = value;
+            try {
+                localStorage.setItem('flappy_best', String(value));
+            } catch (e) {
+                // ignore localStorage errors
+            }
+            // vždy zapisujeme i cookie jako fallback (7 dní)
+            setCookie('flappy_best', String(value), 7);
+            // aktualizujeme HUD
+            updateScore();
         }
 
         // ==============================================
@@ -524,7 +587,13 @@
             gameOver = true;
             
             // Zobrazení Game Over obrazovky
-            document.getElementById('finalScore').textContent = `Finální skóre: ${score}`;
+            // Pokud máme nový rekord, uložíme ho
+            if (score > bestScore) {
+                saveBestScore(score);
+                document.getElementById('finalScore').textContent = `Finální skóre: ${score} — NOVÝ REKORD!`;
+            } else {
+                document.getElementById('finalScore').textContent = `Finální skóre: ${score}`;
+            }
             document.getElementById('gameOver').style.display = 'block';
         }
 
@@ -561,7 +630,8 @@
         // ==============================================
         
         function updateScore() {
-            document.getElementById('hud').textContent = `Skóre: ${score}`;
+            // Zobrazíme aktuální skóre a nejlepší skóre vedle něj
+            document.getElementById('hud').textContent = `Skóre: ${score} • Rekord: ${bestScore}`;
         }
 
         // ==============================================
